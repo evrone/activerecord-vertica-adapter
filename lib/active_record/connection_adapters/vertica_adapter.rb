@@ -776,19 +776,10 @@ module ActiveRecord
       # If the schema is not specified as part of +name+ then it will only find tables within
       # the current schema search path (regardless of permissions to access tables in other schemas)
       def table_exists?(name)
-        schema, table = Utils.extract_schema_and_table(name.to_s)
-        return false unless table
-
-        binds = [[nil, table]]
-        binds << [nil, schema] if schema
-
         exec_query(<<-SQL, 'SCHEMA').rows.first[0].to_i > 0
-            SELECT COUNT(*)
-            FROM pg_class c
-            LEFT JOIN pg_namespace n ON n.oid = c.relnamespace
-            WHERE c.relkind in ('v','r')
-            AND c.relname = '#{table.gsub(/(^"|"$)/,'')}'
-            AND n.nspname = #{schema ? "'#{schema}'" : 'ANY (current_schemas(false))'}
+          SELECT COUNT(*)
+          FROM tables
+          WHERE table_name = '#{name}'
         SQL
       end
 
