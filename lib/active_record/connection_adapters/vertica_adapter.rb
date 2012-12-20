@@ -216,7 +216,6 @@ module ActiveRecord
       ADAPTER_NAME = 'Vertica'
 
       NATIVE_DATABASE_TYPES = {
-        :primary_key => "serial primary key",
         :string      => { :name => "character varying", :limit => 255 },
         :text        => { :name => "text" },
         :integer     => { :name => "integer" },
@@ -370,9 +369,9 @@ module ActiveRecord
         true
       end
 
-      # Does PostgreSQL support finding primary key on non-Active Record tables?
+      # Does Vertica support finding primary key on non-Active Record tables?
       def supports_primary_key? #:nodoc:
-        true
+        false
       end
 
       # Enable standard-conforming strings if available.
@@ -575,6 +574,7 @@ module ActiveRecord
         unless pk
           # Extract the table from the insert sql. Yuck.
           table_ref = extract_table_ref_from_insert_sql(sql)
+          # FIXME: Vertica doesn't have PK's
           pk = primary_key(table_ref) if table_ref
         end
 
@@ -674,6 +674,7 @@ module ActiveRecord
         unless pk
           # Extract the table from the insert sql. Yuck.
           table_ref = extract_table_ref_from_insert_sql(sql)
+          # FIXME: Vertica doesn't have PK's
           pk = primary_key(table_ref) if table_ref
         end
 
@@ -854,86 +855,6 @@ module ActiveRecord
         result.rows.first.first
       end
 
-      # Resets the sequence of a table's primary key to the maximum value.
-      def reset_pk_sequence!(table, pk = nil, sequence = nil) #:nodoc:
-        unless pk and sequence
-          default_pk, default_sequence = pk_and_sequence_for(table)
-
-          pk ||= default_pk
-          sequence ||= default_sequence
-        end
-
-        if @logger && pk && !sequence
-          @logger.warn "#{table} has primary key #{pk} with no default sequence"
-        end
-
-        if pk && sequence
-          quoted_sequence = quote_table_name(sequence)
-
-          select_value <<-end_sql, 'SCHEMA'
-            SELECT setval('#{quoted_sequence}', (SELECT COALESCE(MAX(#{quote_column_name pk})+(SELECT increment_by FROM #{quoted_sequence}), (SELECT min_value FROM #{quoted_sequence})) FROM #{quote_table_name(table)}), false)
-          end_sql
-        end
-      end
-
-      # Returns a table's primary key and belonging sequence.
-      def pk_and_sequence_for(table) #:nodoc:
-        # First try looking for a sequence with a dependency on the
-        # given table's primary key.
-        result = query(<<-end_sql, 'SCHEMA')[0]
-          SELECT attr.attname, seq.relname
-          FROM pg_class      seq,
-               pg_attribute  attr,
-               pg_depend     dep,
-               pg_namespace  name,
-               pg_constraint cons
-          WHERE seq.oid           = dep.objid
-            AND seq.relkind       = 'S'
-            AND attr.attrelid     = dep.refobjid
-            AND attr.attnum       = dep.refobjsubid
-            AND attr.attrelid     = cons.conrelid
-            AND attr.attnum       = cons.conkey[1]
-            AND cons.contype      = 'p'
-            AND dep.refobjid      = '#{quote_table_name(table)}'::regclass
-        end_sql
-
-        if result.nil? or result.empty?
-          result = query(<<-end_sql, 'SCHEMA')[0]
-            SELECT attr.attname,
-              CASE
-                WHEN split_part(pg_get_expr(def.adbin, def.adrelid), '''', 2) ~ '.' THEN
-                  substr(split_part(pg_get_expr(def.adbin, def.adrelid), '''', 2),
-                         strpos(split_part(pg_get_expr(def.adbin, def.adrelid), '''', 2), '.')+1)
-                ELSE split_part(pg_get_expr(def.adbin, def.adrelid), '''', 2)
-              END
-            FROM pg_class       t
-            JOIN pg_attribute   attr ON (t.oid = attrelid)
-            JOIN pg_attrdef     def  ON (adrelid = attrelid AND adnum = attnum)
-            JOIN pg_constraint  cons ON (conrelid = adrelid AND adnum = conkey[1])
-            WHERE t.oid = '#{quote_table_name(table)}'::regclass
-              AND cons.contype = 'p'
-              AND pg_get_expr(def.adbin, def.adrelid) ~* 'nextval'
-          end_sql
-        end
-
-        [result.first, result.last]
-      rescue
-        nil
-      end
-
-      # Returns just a table's primary key
-      def primary_key(table)
-        row = exec_query(<<-end_sql, 'SCHEMA').rows.first
-          SELECT attr.attname
-          FROM pg_attribute attr
-          INNER JOIN pg_constraint cons ON attr.attrelid = cons.conrelid AND attr.attnum = cons.conkey[1]
-          WHERE cons.contype = 'p'
-            AND cons.conrelid = '#{quote_table_name(table)}'::regclass
-        end_sql
-
-        row && row.first
-      end
-
       # Renames a table.
       # Also renames a table's primary key sequence if the sequence name matches the
       # Active Record default.
@@ -943,11 +864,6 @@ module ActiveRecord
       def rename_table(name, new_name)
         clear_cache!
         execute "ALTER TABLE #{quote_table_name(name)} RENAME TO #{quote_table_name(new_name)}"
-        pk, seq = pk_and_sequence_for(new_name)
-        if seq == "#{name}_#{pk}_seq"
-          new_seq = "#{new_name}_#{pk}_seq"
-          execute "ALTER TABLE #{quote_table_name(seq)} RENAME TO #{quote_table_name(new_seq)}"
-        end
       end
 
       # Adds a new column to the named table.
