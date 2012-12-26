@@ -998,16 +998,16 @@ module ActiveRecord
         FOREIGN_KEY_VIOLATION = "23503"
         UNIQUE_VIOLATION      = "23505"
 
-        def translate_exception(exception, message)
-          case exception.result.error_field(PGresult::PG_DIAG_SQLSTATE)
-          when UNIQUE_VIOLATION
-            RecordNotUnique.new(message, exception)
-          when FOREIGN_KEY_VIOLATION
-            InvalidForeignKey.new(message, exception)
-          else
-            super
-          end
-        end
+        # def translate_exception(exception, message)
+        #   case exception.result.error_field(PGresult::PG_DIAG_SQLSTATE)
+        #   when UNIQUE_VIOLATION
+        #     RecordNotUnique.new(message, exception)
+        #   when FOREIGN_KEY_VIOLATION
+        #     InvalidForeignKey.new(message, exception)
+        #   else
+        #     super
+        #   end
+        # end
 
       private
         FEATURE_NOT_SUPPORTED = "0A000" # :nodoc:
