@@ -34,6 +34,7 @@ module ActiveRecord
     class VerticaColumn < Column #:nodoc:
       # Instantiates a new PostgreSQL column definition in a table.
       def initialize(name, default, sql_type = nil, null = true)
+
         super(name, self.class.extract_value_from_default(default), sql_type, null)
       end
 
@@ -56,9 +57,9 @@ module ActiveRecord
       private
         def extract_limit(sql_type)
           case sql_type
-          when /^bigint/i;    8
-          when /^smallint/i;  2
-          else super
+            # vertica uses bigint for any int
+            when /^integer|int|int8|bigint|smallint|tinyint/i; 8
+            else super
           end
         end
 
@@ -588,6 +589,7 @@ module ActiveRecord
 
       # create a 2D array representing the result set
       def result_as_array(res) #:nodoc:
+
         # check if we have any binary column and if they need escaping
         ftypes = Array.new(res.nfields) do |i|
           [i, res.ftype(i)]
